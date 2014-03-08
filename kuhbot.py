@@ -9,6 +9,7 @@ import urllib.parse
 import re
 import requests
 import json
+import configparser
 from bs4 import BeautifulSoup
 
 import sleekxmpp
@@ -25,7 +26,6 @@ else:
 
 
 class KuhBot(sleekxmpp.ClientXMPP):
-
     #urls
     mathtexurl = "http://chart.apis.google.com/chart?cht=tx&chf=bg,s,FFFFFFFF&chco=000000&chl="
     shortenerurl = "https://www.googleapis.com/urlshortener/v1/url"
@@ -34,54 +34,21 @@ class KuhBot(sleekxmpp.ClientXMPP):
     re_latex = r'\$\$(.*?)\$\$'
     re_link = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
 
+    #init
     def __init__(self, jid, password, rooms, nick):
-    
         sleekxmpp.ClientXMPP.__init__(self, jid, password)
         
         self.rooms = rooms
         self.nick = nick
-        
-        # The session_start event will be triggered when
-        # the bot establishes its connection with the server
-        # and the XML streams are ready for use. We want to
-        # listen for this event so that we we can initialize
-        # our roster.
+
         self.add_event_handler("session_start", self.start)
-
-        # The groupchat_message event is triggered whenever a message
-        # stanza is received from any chat room. If you also also
-        # register a handler for the 'message' event, MUC messages
-        # will be processed by both handlers.
         self.add_event_handler("groupchat_message", self.muc_message)
-
-        # The groupchat_presence event is triggered whenever a
-        # presence stanza is received from any chat room, including
-        # any presences you send yourself. To limit event handling
-        # to a single room, use the events muc::room@server::presence,
-        # muc::room@server::got_online, or muc::room@server::got_offline.
         
-        #self.add_event_handler("muc::%s::got_online" % self.room,
-        #                       self.muc_online)
+        #self.add_event_handler("muc::%s::got_online" % self.room,self.muc_online)
 
-
-        # The message event is triggered whenever a message
-        # stanza is received. Be aware that that includes
-        # MUC messages and error messages.
         self.add_event_handler("message", self.message)
 
     def start(self, event):
-        """
-        Process the session_start event.
-
-        Typical actions for the session_start event are
-        requesting the roster and broadcasting an initial
-        presence stanza.
-
-        Arguments:
-            event -- An empty dictionary. The session_start
-                     event does not provide any additional
-                     data.
-        """
         self.send_presence()
         self.get_roster()
         
@@ -92,60 +59,12 @@ class KuhBot(sleekxmpp.ClientXMPP):
                                         # password=the_room_password,
                                         wait=True)
                                         
-    def mathtextencode(self, latex):
-        """
-        encode latex formula into url
-        """
-        
-        logging.info('mathtextencode for %s' % (latex))
-        return self.mathtexurl + urllib.parse.quote(latex)
-        
-    def short_url(self,url):
-        logging.info('short_url for %s' % (url))
-        headers = {'content-type': 'application/json'}
-        payload = {"longUrl": url}
-        url = self.shortenerurl
-        r = requests.post(url,data=json.dumps(payload),headers=headers)
-        logging.debug(r.json())
-        logging.info(r.json()['id'])
-        return r.json()['id']
-        
-    def grab_title(self,url):
-        logging.info('grab_title: %s' % (url))
-        try:
-            res = urllib.request.urlopen(url)
-            if(res.getheader("Content-Type").startswith("text/html")):
-                logging.info('grab_title: %s' % ('html detected, extracting title'))
-                soup = BeautifulSoup(res)
-                retstring = soup.title.string.strip()
-                logging.info('grab_title: %s' % (retstring))
-                return retstring
-            
-        except AttributeError:
-            logging.info('grab_title: AttributeError')
-        except: 
-            print ("grab_title:", sys.exc_info()[0])
-        return ""
+
         
         
-        
+    # events    
     def muc_message(self, msg):
         """
-        Process incoming message stanzas from any chat room. Be aware
-        that if you also have any handlers for the 'message' event,
-        message stanzas may be processed by both handlers, so check
-        the 'type' attribute when using a 'message' event handler.
-
-        Whenever the bot's nickname is mentioned, respond to
-        the message.
-
-        IMPORTANT: Always check that a message is not from yourself,
-                   otherwise you will create an infinite loop responding
-                   to your own messages.
-
-        This handler will reply to messages that mention
-        the bot's nickname.
-
         Arguments:
             msg -- The received message stanza. See the documentation
                    for stanza objects and the Message stanza to see
@@ -194,11 +113,6 @@ class KuhBot(sleekxmpp.ClientXMPP):
 
     def message(self, msg):
         """
-        Process incoming message stanzas. Be aware that this also
-        includes MUC messages and error messages. It is usually
-        a good idea to check the messages's type before processing
-        or sending replies.
-
         Arguments:
             msg -- The received message stanza. See the documentation
                    for stanza objects and the Message stanza to see
@@ -224,21 +138,69 @@ class KuhBot(sleekxmpp.ClientXMPP):
                               mbody="Hello, %s %s" % (presence['muc']['role'],
                                                       presence['muc']['nick']),
                               mtype='groupchat')
-        """                      
+        """                    
+
+        
+    # helpers
+    def mathtextencode(self, latex):
+        """
+        encode latex formula into url
+        """
+        
+        logging.info('mathtextencode for %s' % (latex))
+        return self.mathtexurl + urllib.parse.quote(latex)
+        
+    def short_url(self,url):
+        logging.info('short_url for %s' % (url))
+        headers = {'content-type': 'application/json'}
+        payload = {"longUrl": url}
+        url = self.shortenerurl
+        r = requests.post(url,data=json.dumps(payload),headers=headers)
+        logging.debug(r.json())
+        logging.info(r.json()['id'])
+        return r.json()['id']
+        
+    def grab_title(self,url):
+        logging.info('grab_title: %s' % (url))
+        try:
+            res = urllib.request.urlopen(url)
+            if(res.getheader("Content-Type").startswith("text/html")):
+                logging.info('grab_title: %s' % ('html detected, extracting title'))
+                soup = BeautifulSoup(res)
+                retstring = soup.title.string.strip()
+                logging.info('grab_title: %s' % (retstring))
+                return retstring
+            
+        except AttributeError:
+            logging.info('grab_title: AttributeError')
+        except: 
+            print ("grab_title:", sys.exc_info()[0])
+        return ""        
 
 if __name__ == '__main__':
-
-    logging.basicConfig(level=logging.INFO,
-                        format='%(levelname)-8s %(message)s')
-
+    logging.basicConfig(level=logging.INFO, format='%(levelname)-8s %(message)s')
+    
+    #configparser
+    config = configparser.ConfigParser()
+    config_file = 'kuhbot_config.txt'
+    config['LOGIN'] =   {   'jid' : '',
+                            'password' : '',
+                            'nick' : ''
+                        }
+    config['ROOMS'] =   {}
+                        
+    config.read(config_file)
+    jid = config.get('LOGIN','jid')
+    password = config.get('LOGIN','password')
+    nick = config.get('LOGIN','nick')
+    rooms = list(config['ROOMS'].keys())
+    
+    
+ 
+ 
     # Setup the KuhBot and register plugins. Note that while plugins may
     # have interdependencies, the order in which you register them does
     # not matter.
-    jid="kuhbot@jabber.at"
-    password="NLs3QjGjS99eWS7ZfXnMzvn4"
-    rooms = {"fo_shizzle@conference.jabber.at"}
-    nick="kuhbot"
-    
     xmpp = KuhBot(jid, password, rooms, nick)
     xmpp.register_plugin('xep_0030') # Service Discovery
     xmpp.register_plugin('xep_0004') # Data Forms

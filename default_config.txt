@@ -1,0 +1,7 @@
+[LOGIN]
+nick = nickformuc
+jid = jid@server.com
+password = supersecretpassword
+
+[ROOMS]
+bot@server.com = 1
