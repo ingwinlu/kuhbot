@@ -1,7 +1,12 @@
+#move this file to kuhbot_config.txt when finished
+
 [LOGIN]
 nick = nickformuc
 jid = jid@server.com
 password = supersecretpassword
 
+
+#muc conferences to join
+#syntax muc@server = somevalue
 [ROOMS]
 bot@server.com = 1

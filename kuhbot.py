@@ -79,8 +79,6 @@ class KuhBot(sleekxmpp.ClientXMPP):
             urlfinds = re.findall(self.re_link,msg['body'])
             latexfinds = re.findall(self.re_latex,msg['body'])
             
-            ##print("----------------\n%s\n------------------" % (len(urlfinds)))
-            
             if (len(latexfinds)>0):
                 for find in latexfinds:
                     message = msg['mucnick'] + ": LaTeX <" + self.short_url(self.mathtextencode(find)) + ">"
@@ -181,26 +179,25 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)-8s %(message)s')
     
     #configparser
-    config = configparser.ConfigParser()
-    config_file = 'kuhbot_config.txt'
-    config['LOGIN'] =   {   'jid' : '',
-                            'password' : '',
-                            'nick' : ''
-                        }
-    config['ROOMS'] =   {}
-                        
-    config.read(config_file)
-    jid = config.get('LOGIN','jid')
-    password = config.get('LOGIN','password')
-    nick = config.get('LOGIN','nick')
-    rooms = list(config['ROOMS'].keys())
+    try:
+        config = configparser.ConfigParser()
+        config_file = 'kuhbot_config.txt'
+        config['LOGIN'] =   {   'jid' : '',
+                                'password' : '',
+                                'nick' : ''
+                            }
+        config['ROOMS'] =   {}
+                            
+        config.read_file(open(config_file))
+        jid = config.get('LOGIN','jid')
+        password = config.get('LOGIN','password')
+        nick = config.get('LOGIN','nick')
+        rooms = list(config['ROOMS'].keys())
+    except FileNotFoundError as e:
+        logging.error("I/O error: {0}".format(e))
+        sys.exit(1)
     
-    
- 
- 
-    # Setup the KuhBot and register plugins. Note that while plugins may
-    # have interdependencies, the order in which you register them does
-    # not matter.
+    #setup Kuhbot
     xmpp = KuhBot(jid, password, rooms, nick)
     xmpp.register_plugin('xep_0030') # Service Discovery
     xmpp.register_plugin('xep_0004') # Data Forms
@@ -208,22 +205,8 @@ if __name__ == '__main__':
     xmpp.register_plugin('xep_0060') # PubSub
     xmpp.register_plugin('xep_0199') # XMPP Ping
 
-    # If you are working with an OpenFire server, you may need
-    # to adjust the SSL version used:
-    # xmpp.ssl_version = ssl.PROTOCOL_SSLv3
-
-    # If you want to verify the SSL certificates offered by a server:
-    # xmpp.ca_certs = "path/to/ca/cert"
-
-    # Connect to the XMPP server and start processing XMPP stanzas.
+    #connect
     if xmpp.connect():
-        # If you do not have the dnspython library installed, you will need
-        # to manually specify the name of the server if it does not match
-        # the one in the JID. For example, to use Google Talk you would
-        # need to use:
-        #
-        # if xmpp.connect(('talk.google.com', 5222)):
-        #     ...
         xmpp.process(block=True)
         print("Done")
     else:
