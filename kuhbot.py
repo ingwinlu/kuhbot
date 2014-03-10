@@ -14,6 +14,8 @@ from bs4 import BeautifulSoup
 
 import sleekxmpp
 
+from pid import Pid
+
 # Python versions before 3.0 do not use UTF-8 encoding
 # by default. To ensure that Unicode is handled properly
 # throughout SleekXMPP, we will set the default encoding
@@ -178,6 +180,12 @@ class KuhBot(sleekxmpp.ClientXMPP):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)-8s %(message)s')
     
+    pidinstance = Pid('./.kuhbot_pid')
+    if(pidinstance.read()==1):
+        sys.exit(1)
+    if(pidinstance.write()==1):
+        sys.exit(1)
+            
     #configparser
     try:
         config = configparser.ConfigParser()
@@ -212,3 +220,4 @@ if __name__ == '__main__':
     else:
         print("Unable to connect.")
         
+    pidinstance.release()
