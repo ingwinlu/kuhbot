@@ -10,8 +10,7 @@ import re
 import requests
 import json
 import configparser
-from bs4 import BeautifulSoup
-
+from bs4 import BeautifulSoup, SoupStrainer
 import sleekxmpp
 
 from pid import Pid
@@ -36,9 +35,14 @@ class KuhBot(sleekxmpp.ClientXMPP):
     re_latex = r'\$\$(.*?)\$\$'
     re_link = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
 
+    #restrainer
+    soupStrainer = None
+
     #init
-    def __init__(self, jid, password, rooms, nick):
+    def __init__(self, jid, password, rooms, nick, soupStrainer=SoupStrainer('title')):
         sleekxmpp.ClientXMPP.__init__(self, jid, password)
+
+        self.soupStrainer=soupStrainer
         
         self.rooms = rooms
         self.nick = nick
@@ -92,7 +96,7 @@ class KuhBot(sleekxmpp.ClientXMPP):
                 for find in urlfinds:
                     message = self.grab_title(find)
                     if message is not "":
-                        message = "Title: " + self.grab_title(find)
+                        message = "Title: " + message
                         self.send_message(mto=msg['from'].bare,
                                 mbody=message,
                                 mtype='groupchat')
@@ -166,7 +170,7 @@ class KuhBot(sleekxmpp.ClientXMPP):
             res = urllib.request.urlopen(url)
             if(res.getheader("Content-Type").startswith("text/html")):
                 logging.info('grab_title: %s' % ('html detected, extracting title'))
-                soup = BeautifulSoup(res)
+                soup = BeautifulSoup(res, parse_only=self.soupStrainer)
                 retstring = soup.title.string.strip()
                 logging.info('grab_title: %s' % (retstring))
                 return retstring
