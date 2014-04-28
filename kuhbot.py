@@ -10,8 +10,10 @@ import re
 import requests
 import json
 import configparser
+import time
 from bs4 import BeautifulSoup, SoupStrainer
 import sleekxmpp
+
 
 from pid import Pid
 
@@ -27,6 +29,9 @@ else:
 
 
 class KuhBot(sleekxmpp.ClientXMPP):
+    #stay in run loop
+    running=False
+    
     #urls
     mathtexurl = "http://chart.apis.google.com/chart?cht=tx&chf=bg,s,FFFFFFFF&chco=000000&chl="
     shortenerurl = "https://www.googleapis.com/urlshortener/v1/url"
@@ -179,7 +184,23 @@ class KuhBot(sleekxmpp.ClientXMPP):
             logging.info('grab_title: AttributeError')
         except: 
             print ("grab_title:", sys.exc_info()[0])
-        return ""        
+        return "" 
+
+    def run(self):
+        logging.info('run')
+        self.running=True
+        if xmpp.connect():
+            while(self.running):
+                xmpp.process(block=False)
+                try:
+                    time.sleep(1)
+                except KeyboardInterrupt:
+                    self.running=False
+                
+            logging.info('closing')
+        else:
+            print("Unable to connect.")
+            
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)-8s %(message)s')
@@ -217,11 +238,7 @@ if __name__ == '__main__':
     xmpp.register_plugin('xep_0060') # PubSub
     xmpp.register_plugin('xep_0199') # XMPP Ping
 
-    #connect
-    if xmpp.connect():
-        xmpp.process(block=True)
-        print("Done")
-    else:
-        print("Unable to connect.")
+    xmpp.run()
+
         
     pidinstance.release()
