@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import sys
@@ -12,10 +12,12 @@ import json
 import configparser
 import time
 from bs4 import BeautifulSoup, SoupStrainer
+import feedparser
+import threading
 import sleekxmpp
 
-
 from pid import Pid
+
 
 # Python versions before 3.0 do not use UTF-8 encoding
 # by default. To ensure that Unicode is handled properly
@@ -26,12 +28,45 @@ if sys.version_info < (3, 0):
     sys.setdefaultencoding('utf8')
 else:
     raw_input = input
-
-
-class KuhBot(sleekxmpp.ClientXMPP):
-    #stay in run loop
-    running=False
     
+    
+class ticker():   
+    def __init__(self, maxTime, function, functionArgs):
+        self.maxTime = maxTime
+        self.function = function
+        self.functionArgs = functionArgs
+        self.curTime = 1
+        
+    def tick(self):
+        if(self.curTime == self.maxTime):
+            self.function(*self.functionArgs)
+            self.curTime = 1
+        else:
+            self.curTime = self.curTime + 1
+            
+class TickerThread():
+    tickerArray=[]
+    
+    def __init__(self):
+        pass
+        
+    def start(self):
+        self.t = threading.Thread(target=self.worker)
+        self.t.daemon = True
+        self.t.start()
+        logging.info('start worker')
+        
+    def worker(self):
+        logging.debug('worker init')
+        while True:
+            logging.debug('worker loop')
+            for ticker in self.tickerArray:
+                ticker.tick()
+            time.sleep(1)
+
+class KuhBot(sleekxmpp.ClientXMPP): 
+    #ticker
+    tickerThread = None
     #urls
     mathtexurl = "http://chart.apis.google.com/chart?cht=tx&chf=bg,s,FFFFFFFF&chco=000000&chl="
     shortenerurl = "https://www.googleapis.com/urlshortener/v1/url"
@@ -46,17 +81,15 @@ class KuhBot(sleekxmpp.ClientXMPP):
     #init
     def __init__(self, jid, password, rooms, nick, soupStrainer=SoupStrainer('title')):
         sleekxmpp.ClientXMPP.__init__(self, jid, password)
-
-        self.soupStrainer=soupStrainer
-        
+        self.soupStrainer=soupStrainer       
         self.rooms = rooms
         self.nick = nick
-
-        self.add_event_handler("session_start", self.start)
-        self.add_event_handler("groupchat_message", self.muc_message)
+        self.tickerThread = TickerThread()
+        self.tickerThread.tickerArray.append(ticker(5,self.send_message,('winlu@jabber.at', 'test', 'chat')))
         
+        self.add_event_handler("session_start", self.start)
+        self.add_event_handler("groupchat_message", self.muc_message)      
         #self.add_event_handler("muc::%s::got_online" % self.room,self.muc_online)
-
         self.add_event_handler("message", self.message)
 
     def start(self, event):
@@ -69,10 +102,16 @@ class KuhBot(sleekxmpp.ClientXMPP):
                                         # If a room password is needed, use:
                                         # password=the_room_password,
                                         wait=True)
-                                        
-
+        self.tickerThread.start()                                
         
-        
+    def run(self):
+        logging.info('run')
+        if xmpp.connect():
+            xmpp.process(block=True)
+            logging.info('closing')
+        else:
+            print("Unable to connect.")
+            
     # events    
     def muc_message(self, msg):
         """
@@ -185,22 +224,7 @@ class KuhBot(sleekxmpp.ClientXMPP):
         except: 
             print ("grab_title:", sys.exc_info()[0])
         return "" 
-
-    def run(self):
-        logging.info('run')
-        self.running=True
-        if xmpp.connect():
-            while(self.running):
-                xmpp.process(block=False)
-                try:
-                    time.sleep(1)
-                except KeyboardInterrupt:
-                    self.running=False
-                
-            logging.info('closing')
-        else:
-            print("Unable to connect.")
-            
+           
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)-8s %(message)s')
@@ -215,9 +239,9 @@ if __name__ == '__main__':
     try:
         config = configparser.ConfigParser()
         config_file = 'kuhbot_config.txt'
-        config['LOGIN'] =   {   'jid' : '',
+        config['LOGIN'] =   {   'jid'      : '',
                                 'password' : '',
-                                'nick' : ''
+                                'nick'     : '',
                             }
         config['ROOMS'] =   {}
                             
@@ -239,6 +263,5 @@ if __name__ == '__main__':
     xmpp.register_plugin('xep_0199') # XMPP Ping
 
     xmpp.run()
-
         
     pidinstance.release()
