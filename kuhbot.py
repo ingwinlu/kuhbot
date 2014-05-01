@@ -4,8 +4,8 @@
 import sys
 import getpass
 import logging
-import urllib.request
-import urllib.parse
+import urllib.request ## TODO:  need rwrite to work with requests
+import urllib.parse ##   TODO:  no need for double the inports
 import re
 import requests
 import json
@@ -17,6 +17,7 @@ import threading
 import sleekxmpp
 
 from pid import Pid
+from future import Future
 
 
 # Python versions before 3.0 do not use UTF-8 encoding
@@ -29,9 +30,50 @@ if sys.version_info < (3, 0):
 else:
     raw_input = input
     
+#https://wiki.python.org/moin/RssLibraries
+class rssPull():
+    url_list = None
+    last_id_list = None
+    
+    def __init__(self, urlArray, startupPull = False):
+        self.url_list = urlArray
+        self.last_id_list = []
+        if(startupPull == False): #pulls feed to populate last_id_list to not spam at startup
+            self.getNewItems()
+    
+    def pull(self):
+        logging.debug('rss pull')
+        future_calls = [Future(feedparser.parse,rss_url) for rss_url in self.url_list]
+        feeds = [future_obj() for future_obj in future_calls]
+        
+        entries = []
+        for feed in feeds:
+            entries.extend( feed[ "items" ] )
+            
+        sorted_entries = sorted(entries, key=lambda entry: entry["date_parsed"])
+        sorted_entries.reverse() # for most recent entries first
+        return sorted_entries
+        
+    def getNewItems(self):
+        logging.debug('getNewItems')
+        new_entries = []
+        new_ids = []
+        item_list = self.pull()
+        #logging.debug('length of item_list: ' + repr(len(item_list)))
+        for item in item_list:
+            logging.debug('examine id: ' + item['id'])
+            if(item['id'] not in self.last_id_list):
+                logging.debug(item['id'] + ' is not in last id list')
+                new_ids.append(item['id'])
+                new_entries.append(item)
+        self.last_id_list = self.last_id_list + new_ids
+        logging.debug('new_ids' + ','.join(new_ids))
+        logging.debug('new last_id_list:' + ','.join(self.last_id_list))
+        return new_entries
+        
     
 class ticker():   
-    def __init__(self, maxTime, function, functionArgs):
+    def __init__(self, maxTime, function, functionArgs = None):
         self.maxTime = maxTime
         self.function = function
         self.functionArgs = functionArgs
@@ -50,6 +92,9 @@ class TickerThread():
     def __init__(self):
         pass
         
+    def add(self, ticker):
+        self.tickerArray.append(ticker)
+        
     def start(self):
         self.t = threading.Thread(target=self.worker)
         self.t.daemon = True
@@ -59,7 +104,6 @@ class TickerThread():
     def worker(self):
         logging.debug('worker init')
         while True:
-            logging.debug('worker loop')
             for ticker in self.tickerArray:
                 ticker.tick()
             time.sleep(1)
@@ -84,9 +128,14 @@ class KuhBot(sleekxmpp.ClientXMPP):
         self.soupStrainer=soupStrainer       
         self.rooms = rooms
         self.nick = nick
-        self.tickerThread = TickerThread()
-        self.tickerThread.tickerArray.append(ticker(5,self.send_message,('winlu@jabber.at', 'test', 'chat')))
         
+        #add async events
+        self.tickerThread = TickerThread()
+        
+        #self.tickerThread.add(ticker(5,self.send_message,('winlu@jabber.at', 'test', 'chat')))
+        #self.tickerThread.add(ticker(60, self.rss_send,('winlu@jabber.at',)))
+        
+        #add event handlers
         self.add_event_handler("session_start", self.start)
         self.add_event_handler("groupchat_message", self.muc_message)      
         #self.add_event_handler("muc::%s::got_online" % self.room,self.muc_online)
@@ -125,7 +174,14 @@ class KuhBot(sleekxmpp.ClientXMPP):
                               mbody="I heard that, %s." % msg['mucnick'],
                               mtype='groupchat')
         """
-        if (msg['mucnick'] != self.nick): 
+        logging.debug(repr(msg))
+        logging.debug(repr(msg['mucnick']))
+        logging.debug(repr(msg['mucroom']))
+        logging.debug(repr(msg['from']))
+        if (msg['mucroom'] == msg['from']):
+            logging.debug('channelmessage discovered')
+            
+        elif (msg['mucnick'] != self.nick): 
             urlfinds = re.findall(self.re_link,msg['body'])
             latexfinds = re.findall(self.re_latex,msg['body'])
             
@@ -224,10 +280,18 @@ class KuhBot(sleekxmpp.ClientXMPP):
         except: 
             print ("grab_title:", sys.exc_info()[0])
         return "" 
-           
+        
+    def rss_send(self, to):
+        logging.info('rss_send')
+        rss = rssPull(['http://rss.orf.at/news.xml', 'http://heroicdebugging.biz/feeds/all.atom.xml']) #should be constructed from configparser
+        rss_items = rss.getNewItems()
+        for item in rss_items:
+            msg_string = 'Title: {0}\nLink: {1}'.format(item['title'],item['link'])
+            self.send_message(mto=to, mbody=msg_string, mtype='chat')
+        
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(levelname)-8s %(message)s')
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)-8s %(message)s')
     
     pidinstance = Pid('./.kuhbot_pid')
     if(pidinstance.read()==1):
@@ -256,6 +320,7 @@ if __name__ == '__main__':
     
     #setup Kuhbot
     xmpp = KuhBot(jid, password, rooms, nick)
+    #xmpp = KuhBot(jid, password, [], nick)
     xmpp.register_plugin('xep_0030') # Service Discovery
     xmpp.register_plugin('xep_0004') # Data Forms
     xmpp.register_plugin('xep_0045') # Multi-User Chat
